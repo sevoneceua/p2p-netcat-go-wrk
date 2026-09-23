@@ -1,5 +1,11 @@
 # go-p2p-netcat
 
+> This repository (`sevoneceua/p2p-netcat-go-wrk`) is a working fork of
+> [santaklouse/go-p2p-netcat](https://github.com/santaklouse/go-p2p-netcat),
+> used as the base for a multi-tunnel/FRP-style daemon, SOCKS
+> improvements, and a legacy Windows track. MIT-licensed, upstream
+> copyright retained — see `LICENSE`.
+
 **English** | [Русский](README.RU.md)
 
 [![CI](https://github.com/santaklouse/go-p2p-netcat/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/santaklouse/go-p2p-netcat/actions/workflows/ci.yml)
