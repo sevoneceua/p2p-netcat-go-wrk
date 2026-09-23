@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"sort"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	websockettransport "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/santaklouse/go-p2p-netcat/protocol/pairing"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -60,6 +62,12 @@ type Config struct {
 	DHTServer      bool
 	RelayServer    bool
 	Verbose        bool
+
+	// UpstreamSOCKS routes every outbound TCP dial this Host makes
+	// (relay connections and direct peer connections) through an
+	// external SOCKS5 proxy at "host:port" (no auth). See the warning
+	// in New about which transports this can and cannot cover.
+	UpstreamSOCKS string
 }
 
 type Node struct {
@@ -89,15 +97,27 @@ func New(parent context.Context, cfg Config) (*Node, error) {
 	if cfg.IPVersion != 0 && cfg.IPVersion != 4 && cfg.IPVersion != 6 {
 		return nil, errors.New("IP version must be 4, 6, or 0")
 	}
+	if cfg.UpstreamSOCKS != "" {
+		if _, _, err := net.SplitHostPort(cfg.UpstreamSOCKS); err != nil {
+			return nil, fmt.Errorf("upstream SOCKS proxy: %w", err)
+		}
+	}
+	cfg = applyUpstreamSOCKSGuard(cfg)
 	ctx, cancel := context.WithCancel(parent)
+	tcpOptions := []tcptransport.Option{}
+	if cfg.UpstreamSOCKS != "" {
+		tcpOptions = append(tcpOptions, tcptransport.WithDialerForAddr(upstreamSOCKSDialer(cfg.UpstreamSOCKS)))
+	}
 	options := []libp2p.Option{
 		libp2p.Identity(cfg.PrivateKey),
 		libp2p.UserAgent("go-p2p-netcat/0.2.0"),
 		libp2p.ProtocolVersion("p2p-netcat/1.0.0"),
 		libp2p.NoTransports,
 		libp2p.SwarmOpts(swarm.WithDialRanker(PreferDialRanker)),
-		libp2p.Transport(tcptransport.NewTCPTransport),
-		libp2p.Transport(websockettransport.New),
+		libp2p.Transport(tcptransport.NewTCPTransport, tcpOptions...),
+	}
+	if cfg.UpstreamSOCKS == "" {
+		options = append(options, libp2p.Transport(websockettransport.New))
 	}
 	if cfg.EnableQUIC {
 		options = append(options, libp2p.Transport(quictransport.NewTransport))
@@ -565,6 +585,69 @@ func uniqueAddrs(values []ma.Multiaddr) []ma.Multiaddr {
 		result = append(result, value)
 	}
 	return result
+}
+
+// applyUpstreamSOCKSGuard forces off transports that would silently bypass
+// UpstreamSOCKS if left on. tcp.WithDialerForAddr (wired in New) only
+// covers the TCP transport. QUIC and WebRTC dial their own UDP sockets
+// directly, and the vendored websocket transport has no equivalent
+// dialer hook (see p2p/transport/websocket) — none of the three can be
+// routed through a SOCKS proxy today. Leaving them on would leak
+// connections outside the proxy while the caller believes everything is
+// covered, so this is deliberate, not an oversight to "fix" later. It
+// mirrors the existing Tor guard in internal/cli/root.go ("-T requires a
+// TCP/WS/WSS relay"), except our WS/WSS is also uncovered, so it goes too
+// (see the matching gate on websockettransport.New in New).
+// Pure and network-free so it is unit-testable without a live proxy.
+func applyUpstreamSOCKSGuard(cfg Config) Config {
+	if cfg.UpstreamSOCKS != "" {
+		cfg.EnableQUIC = false
+		cfg.EnableWebRTC = false
+	}
+	return cfg
+}
+
+// upstreamSOCKSDialer builds a tcptransport.DialerForAddr that routes every
+// outbound TCP dial through the SOCKS5 proxy at proxyAddr. Passing this to
+// tcptransport.WithDialerForAddr makes it the *only* dialer the TCP
+// transport uses (see that option's doc comment) — there is no per-address
+// bypass, by design: a partial bypass is exactly the kind of leak the
+// UpstreamSOCKS guard in New is trying to avoid.
+func upstreamSOCKSDialer(proxyAddr string) tcptransport.DialerForAddr {
+	return func(ma.Multiaddr) (tcptransport.ContextDialer, error) {
+		dialer, err := proxy.SOCKS5("tcp", proxyAddr, nil, proxy.Direct)
+		if err != nil {
+			return nil, fmt.Errorf("configure SOCKS5 dialer: %w", err)
+		}
+		return contextDialer{dialer}, nil
+	}
+}
+
+// contextDialer adapts a golang.org/x/net/proxy.Dialer (Dial only) to
+// tcptransport.ContextDialer (DialContext). proxy.Dialer has no
+// cancellation of its own, so a context cancelled before Dial returns
+// leaves that one dial running in the background until it completes or
+// the OS-level connect times out; this is the standard, accepted
+// trade-off for wrapping non-context-aware dialers and matches what
+// net/http's own SOCKS5 support does internally.
+type contextDialer struct{ dialer proxy.Dialer }
+
+func (c contextDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	type result struct {
+		conn net.Conn
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		conn, err := c.dialer.Dial(network, address)
+		done <- result{conn, err}
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r := <-done:
+		return r.conn, r.err
+	}
 }
 
 type mdnsNotifee struct {
