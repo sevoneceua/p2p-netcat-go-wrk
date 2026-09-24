@@ -39,6 +39,7 @@ type options struct {
 	quiet                            bool
 	socks                            bool
 	tor                              bool
+	upstreamSOCKS                    string
 	interactive                      bool
 	zero                             bool
 	exec                             string
@@ -95,6 +96,7 @@ func NewRoot() *cobra.Command {
 	flags.BoolVarP(&opts.quiet, "quiet", "q", false, "suppress diagnostics")
 	flags.BoolVarP(&opts.socks, "socks", "S", false, "run a SOCKS4/4a/5 server on the remote side")
 	flags.BoolVarP(&opts.tor, "tor", "T", false, "connect to a relay through Tor/torsocks")
+	flags.StringVar(&opts.upstreamSOCKS, "upstream-socks", "", "route outbound TCP dials (relay + peer connections) through this SOCKS5 proxy (host:port); disables QUIC/WebRTC/WS to avoid a leak around it")
 	flags.BoolVarP(&opts.interactive, "interactive", "i", false, "run an interactive PTY login shell")
 	flags.BoolVarP(&opts.zero, "zero", "z", false, "check connectivity without transferring data")
 	flags.StringVarP(&opts.exec, "exec", "e", "", "attach the server stream to a shell command")
@@ -222,6 +224,9 @@ func validateOptions(command *cobra.Command, opts *options, args []string) error
 	}
 	if opts.listen && privileged && !pairingTokenConfigured(opts) && !opts.allowUnauthenticatedListener {
 		return errors.New("privileged listener modes require a pairing token; use --allow-unauthenticated-listener only if public access is intended")
+	}
+	if opts.tor && opts.upstreamSOCKS != "" {
+		return errors.New("-T/--tor and --upstream-socks cannot be combined")
 	}
 	if opts.allowUnauthenticatedNativeWebRTC && (opts.noWebRTC || opts.tor) {
 		return errors.New("--allow-unauthenticated-native-webrtc cannot be combined with --no-webrtc or -T/--tor")

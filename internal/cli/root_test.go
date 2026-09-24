@@ -126,6 +126,10 @@ func TestNodeConfigHonorsDiscoveryAndTorFlags(t *testing.T) {
 	if tor.EnableDHT || tor.EnableMDNS || tor.EnablePubSub || tor.EnableQUIC || tor.EnableWebRTC {
 		t.Fatalf("Tor config left a direct/discovery transport enabled: %+v", tor)
 	}
+	upstreamSOCKS := nodeConfig(&options{upstreamSOCKS: "127.0.0.1:9050"}, key, false, false, false, false)
+	if upstreamSOCKS.UpstreamSOCKS != "127.0.0.1:9050" {
+		t.Fatalf("nodeConfig did not pass upstreamSOCKS through: %+v", upstreamSOCKS)
+	}
 }
 
 func TestRootRejectsInvalidAndUnsupportedCombinations(t *testing.T) {
@@ -139,6 +143,7 @@ func TestRootRejectsInvalidAndUnsupportedCombinations(t *testing.T) {
 		{"-p", "0"},
 		{"-4", "-6"},
 		{"-T"},
+		{"-T", "--upstream-socks", "127.0.0.1:9050", "--relay", "/ip4/127.0.0.1/tcp/1/p2p/12D3KooWQZPLb65sQXvujFQ1oRyx62arxnzT4rMTtdQWxSurvNq2", "peer", "10001"},
 		{"-l", "-S", "-p", "8080"},
 		{"-i", "-e", "true", "-l"},
 		{"-k", "12D3KooWQZPLb65sQXvujFQ1oRyx62arxnzT4rMTtdQWxSurvNq2", "12345"},

@@ -41,5 +41,6 @@ func nodeConfig(
 		DHTServer:      dhtServer,
 		RelayServer:    relayServer,
 		Verbose:        opts.verbose,
+		UpstreamSOCKS:  opts.upstreamSOCKS,
 	}
 }
