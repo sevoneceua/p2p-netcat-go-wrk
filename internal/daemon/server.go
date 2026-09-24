@@ -15,12 +15,11 @@ import (
 	"github.com/santaklouse/go-p2p-netcat/session"
 )
 
-func (d *Daemon) startServer(ctx context.Context, t tunnelconfig.Tunnel, token *pairing.Token) error {
+func (d *Daemon) startServer(ctx context.Context, t tunnelconfig.Tunnel, token *pairing.Token) (tunnelHandle, error) {
 	lock, err := listenerlock.Acquire(t.LogicalPort)
 	if err != nil {
-		return fmt.Errorf("acquire logical port %d: %w", t.LogicalPort, err)
+		return tunnelHandle{}, fmt.Errorf("acquire logical port %d: %w", t.LogicalPort, err)
 	}
-	d.addLock(lock)
 
 	proto := p2pnode.ProtocolForService(t.LogicalPort)
 	if t.Type == tunnelconfig.TunnelForward && t.Protocol == tunnelconfig.ProtocolUDP {
@@ -54,7 +53,7 @@ func (d *Daemon) startServer(ctx context.Context, t tunnelconfig.Tunnel, token *
 	d.Node.Advertise(ctx, token)
 
 	d.log("tunnel %s: listening on logical port %d (%s/%s)", t.Name, t.LogicalPort, t.Type, protocolLabel(t))
-	return nil
+	return tunnelHandle{lock: lock, proto: proto}, nil
 }
 
 func protocolLabel(t tunnelconfig.Tunnel) string {

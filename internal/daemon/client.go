@@ -13,19 +13,19 @@ import (
 	"github.com/santaklouse/go-p2p-netcat/session"
 )
 
-func (d *Daemon) startClient(ctx context.Context, t tunnelconfig.Tunnel, token *pairing.Token) error {
+func (d *Daemon) startClient(ctx context.Context, t tunnelconfig.Tunnel, token *pairing.Token) (tunnelHandle, error) {
 	if t.Type != tunnelconfig.TunnelForward {
 		// tunnelconfig.Validate already rejects this; kept as a direct
 		// error (not a panic) in case a Config reaches here unvalidated.
-		return fmt.Errorf("client mode only supports type forward, got %q", t.Type)
+		return tunnelHandle{}, fmt.Errorf("client mode only supports type forward, got %q", t.Type)
 	}
 	host, portText, err := net.SplitHostPort(t.Listen)
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return tunnelHandle{}, fmt.Errorf("listen: %w", err)
 	}
 	port, err := strconv.Atoi(portText)
 	if err != nil {
-		return fmt.Errorf("listen port: %w", err)
+		return tunnelHandle{}, fmt.Errorf("listen port: %w", err)
 	}
 
 	openStream := func(openCtx context.Context) (session.Stream, error) {
@@ -61,27 +61,25 @@ func (d *Daemon) startClient(ctx context.Context, t tunnelconfig.Tunnel, token *
 		// the first local datagram to trigger discovery.
 		preconnected, err := openStream(ctx)
 		if err != nil {
-			return fmt.Errorf("establish initial UDP carrier: %w", err)
+			return tunnelHandle{}, fmt.Errorf("establish initial UDP carrier: %w", err)
 		}
 		opener := newPreconnectedOpener(preconnected, openStream)
 		listener, err := session.StartLocalUDPForward(
 			ctx, host, port, session.DefaultUDPIdleTimeout, opener.Open, onError)
 		if err != nil {
 			_ = opener.Close()
-			return err
+			return tunnelHandle{}, err
 		}
-		d.addCloser(listener)
 		d.log("tunnel %s: local UDP %s -> %s service %d", t.Name, listener.LocalAddr(), t.Peer, t.LogicalPort)
-		return nil
+		return tunnelHandle{closer: listener}, nil
 	}
 
 	listener, err := session.StartLocalForward(ctx, host, port, openStream, onError)
 	if err != nil {
-		return err
+		return tunnelHandle{}, err
 	}
-	d.addCloser(listener)
 	d.log("tunnel %s: local %s -> %s service %d", t.Name, listener.Addr(), t.Peer, t.LogicalPort)
-	return nil
+	return tunnelHandle{closer: listener}, nil
 }
 
 // preconnectedOpener hands out an already-open stream once, then falls

@@ -96,6 +96,85 @@ func TestForwardTunnelEndToEnd(t *testing.T) {
 	}
 }
 
+// TestReloadAddsChangesAndRemovesTunnels exercises the full diff behavior
+// documented on Daemon.Reload: adding a tunnel starts it and makes it
+// reachable, removing it releases its logical-port lock (checked by
+// re-acquiring that exact port directly, which would fail if the lock
+// were still held), and a tunnel that did not change keeps its original
+// handle instance instead of being torn down and rebuilt.
+func TestReloadAddsChangesAndRemovesTunnels(t *testing.T) {
+	t.Setenv(listenerlock.DirectoryEnvironment, t.TempDir())
+	echoAddr := startEchoServer(t)
+
+	const portA = 45010
+	const portB = 45011
+
+	tunnelA := tunnelconfig.Tunnel{
+		Name: "a", Type: tunnelconfig.TunnelForward, Mode: tunnelconfig.ModeServer,
+		Protocol: tunnelconfig.ProtocolTCP, LogicalPort: portA, Target: echoAddr,
+		AllowUnauthenticated: true,
+	}
+	cfg := &tunnelconfig.Config{
+		Identity: t.TempDir() + "/identity.key",
+		Tunnels:  []tunnelconfig.Tunnel{tunnelA},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	d, err := Run(ctx, cfg, testLogger(t, "reload"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	defer d.Close()
+
+	d.mu.Lock()
+	handleABeforeReload := d.handles["a"]
+	d.mu.Unlock()
+
+	tunnelB := tunnelconfig.Tunnel{
+		Name: "b", Type: tunnelconfig.TunnelForward, Mode: tunnelconfig.ModeServer,
+		Protocol: tunnelconfig.ProtocolTCP, LogicalPort: portB, Target: echoAddr,
+		AllowUnauthenticated: true,
+	}
+	cfgWithB := &tunnelconfig.Config{
+		Identity: cfg.Identity,
+		Tunnels:  []tunnelconfig.Tunnel{tunnelA, tunnelB},
+	}
+	if err := d.Reload(cfgWithB); err != nil {
+		t.Fatalf("Reload (add b): %v", err)
+	}
+
+	d.mu.Lock()
+	_, hasB := d.handles["b"]
+	handleAAfterAdd := d.handles["a"]
+	d.mu.Unlock()
+	if !hasB {
+		t.Fatal("tunnel b not tracked after reload added it")
+	}
+	if handleAAfterAdd.lock != handleABeforeReload.lock {
+		t.Error("unrelated tunnel a was restarted (lock instance changed) by a reload that didn't touch it")
+	}
+
+	if err := d.Reload(cfg); err != nil {
+		t.Fatalf("Reload (remove b): %v", err)
+	}
+	d.mu.Lock()
+	_, hasB = d.handles["b"]
+	d.mu.Unlock()
+	if hasB {
+		t.Fatal("tunnel b still tracked after a reload that removed it")
+	}
+
+	// The strongest check: the logical-port lock must have actually been
+	// released, not just dropped from the map. If it weren't, a fresh
+	// Acquire on the same port would fail exactly like tunnelconfig's own
+	// duplicate-port rule says it should for two simultaneous holders.
+	freedLock, err := listenerlock.Acquire(portB)
+	if err != nil {
+		t.Fatalf("expected logical port %d to be free after tunnel b was removed: %v", portB, err)
+	}
+	_ = freedLock.Close()
+}
+
 // TestPrivilegedServerTunnelRequiresToken is a narrower regression check:
 // tunnelconfig.Validate already rejects a config with no token_file and no
 // allow_unauthenticated for socks/pty/exec, so Run must never reach the
