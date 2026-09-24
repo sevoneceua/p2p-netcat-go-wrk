@@ -104,17 +104,21 @@ func New(parent context.Context, cfg Config) (*Node, error) {
 	}
 	cfg = applyUpstreamSOCKSGuard(cfg)
 	ctx, cancel := context.WithCancel(parent)
-	tcpOptions := []tcptransport.Option{}
-	if cfg.UpstreamSOCKS != "" {
-		tcpOptions = append(tcpOptions, tcptransport.WithDialerForAddr(upstreamSOCKSDialer(cfg.UpstreamSOCKS)))
-	}
 	options := []libp2p.Option{
 		libp2p.Identity(cfg.PrivateKey),
 		libp2p.UserAgent("go-p2p-netcat/0.2.0"),
 		libp2p.ProtocolVersion("p2p-netcat/1.0.0"),
 		libp2p.NoTransports,
 		libp2p.SwarmOpts(swarm.WithDialRanker(PreferDialRanker)),
-		libp2p.Transport(tcptransport.NewTCPTransport, tcpOptions...),
+	}
+	if cfg.UpstreamSOCKS != "" {
+		// libp2p.Transport's opts parameter is ...any: a []tcp.Option
+		// cannot be spread into it directly (no implicit []T -> []any
+		// conversion in Go), so each Option is passed as its own arg.
+		options = append(options, libp2p.Transport(tcptransport.NewTCPTransport,
+			tcptransport.WithDialerForAddr(upstreamSOCKSDialer(cfg.UpstreamSOCKS))))
+	} else {
+		options = append(options, libp2p.Transport(tcptransport.NewTCPTransport))
 	}
 	if cfg.UpstreamSOCKS == "" {
 		options = append(options, libp2p.Transport(websockettransport.New))
