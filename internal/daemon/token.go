@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/santaklouse/go-p2p-netcat/internal/appdir"
 	"github.com/santaklouse/go-p2p-netcat/internal/secretfile"
 	"github.com/santaklouse/go-p2p-netcat/internal/tunnelconfig"
 	"github.com/santaklouse/go-p2p-netcat/protocol/pairing"
@@ -23,7 +23,7 @@ func loadTunnelToken(t tunnelconfig.Tunnel) (*pairing.Token, error) {
 	if t.TokenFile == "" {
 		return nil, nil
 	}
-	path, err := expandHome(t.TokenFile)
+	path, err := appdir.ResolvePath(t.TokenFile)
 	if err != nil {
 		return nil, fmt.Errorf("tunnel %q: token_file: %w", t.Name, err)
 	}
@@ -70,31 +70,4 @@ func readTokenFile(path string) (string, error) {
 		return "", fmt.Errorf("pairing token file exceeds %d bytes", maximum)
 	}
 	return string(data), nil
-}
-
-// expandHome expands a leading "~" or "~/..." to the current user's home
-// directory. YAML config files have no shell to do this for the user, so
-// unlike CLI flags (which the shell already expands), tunnelconfig paths
-// need it done explicitly. Anything not starting with "~" passes through
-// unchanged; "~otheruser/..." is left alone (rare enough, and resolving
-// another account's home directory portably is its own can of worms).
-func expandHome(path string) (string, error) {
-	if path == "" || path == "~" {
-		if path == "~" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			return home, nil
-		}
-		return path, nil
-	}
-	if !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	return filepath.Join(home, path[2:]), nil
 }

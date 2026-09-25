@@ -38,12 +38,12 @@ p2p-netcat-go-wrk — EXAMPLES
 SOCKS5-прокси, доступный только через p2p, без открытого порта наружу.
 
   На VPS (exit-node):
-    $ p2p-nc -l 10800 -S --pairing-token-file ~/.config/p2p-netcat/socks.token
+    $ p2p-nc -l 10800 -S --pairing-token-file ./oobe/tokens/socks.token
     # -S = поднять SOCKS4/4a/5-сервер на логическом порту 10800;
     # без --allow-unauthenticated-listener обязателен pairing-токен
 
   На клиентской машине:
-    $ p2p-nc VPS_PEER_ID 10800 -p 1080 --pairing-token-file ~/.config/p2p-netcat/socks.token
+    $ p2p-nc VPS_PEER_ID 10800 -p 1080 --pairing-token-file ./oobe/tokens/socks.token
     # локальный SOCKS5-прокси на 127.0.0.1:1080
 
     $ curl --socks5 127.0.0.1:1080 https://ifconfig.me
@@ -86,9 +86,9 @@ net.Dial. См. p2p.Config.UpstreamSOCKS / internal/daemon upstream_socks
 SOCKS5 exit-node (Пример 2) одновременно, в одном процессе, с исходящим
 трафиком узла через Tor (Пример 3) — то, ради чего строился Эпик 1.
 
-  ~/.config/p2p-netcat/tunnels.yaml:
+  <папка с p2p-nc.exe>/oobe/tunnels.yaml:
   --------------------------------------------------------------------------
-  identity: ~/.config/p2p-netcat/identity.key
+  # identity: не указан -> по умолчанию <oobe>/identity.key
   upstream_socks: 127.0.0.1:9050
 
   tunnels:
@@ -98,16 +98,16 @@ SOCKS5 exit-node (Пример 2) одновременно, в одном про
       protocol: tcp
       logical_port: 15432
       target: 127.0.0.1:5432
-      token_file: ~/.config/p2p-netcat/tokens/postgres.token
+      token_file: tokens/postgres.token
 
     - name: exit-proxy
       type: socks
       mode: server
       logical_port: 10800
-      token_file: ~/.config/p2p-netcat/tokens/socks.token
+      token_file: tokens/socks.token
   --------------------------------------------------------------------------
 
-    $ p2p-nc run --config ~/.config/p2p-netcat/tunnels.yaml
+    $ p2p-nc run --config ./oobe/tunnels.yaml
     [p2p-ncd] PeerId: 12D3KooW...
     [p2p-ncd] 2 tunnel(s) running; Ctrl+C to stop
     [p2p-ncd] tunnel postgres: listening on logical port 15432 (forward/tcp)
@@ -116,7 +116,7 @@ SOCKS5 exit-node (Пример 2) одновременно, в одном про
   Дальше можно дописать в YAML третий туннель (скажем, admin-shell типа
   pty) и просто СОХРАНИТЬ ФАЙЛ — процесс НЕ нужно перезапускать:
 
-    [p2p-ncd] config reloaded from /home/user/.config/p2p-netcat/tunnels.yaml
+    [p2p-ncd] config reloaded from /home/user/p2p-nc/oobe/tunnels.yaml
     [p2p-ncd] tunnel admin-shell: listening on logical port 2222 (pty/tcp)
 
   (по умолчанию файл проверяется на изменения раз в 2 секунды,

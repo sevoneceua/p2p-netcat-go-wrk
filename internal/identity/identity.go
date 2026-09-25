@@ -9,12 +9,25 @@ import (
 	"path/filepath"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/santaklouse/go-p2p-netcat/internal/appdir"
 	"github.com/santaklouse/go-p2p-netcat/internal/secretfile"
 )
 
 const maxIdentityFileSize = 64 * 1024
 
+// DefaultPath returns <oobe>/identity.key — see internal/appdir for what
+// "oobe" means and why identity, pairing tokens, and tunnel configs all
+// live in one predictable folder next to the executable rather than
+// scattered across OS-specific per-user directories. Falls back to the
+// old $XDG_CONFIG_HOME/p2p-netcat (or ~/.config/p2p-netcat) location, and
+// finally to ./.p2p-netcat, only if appdir.Dir can't be resolved or
+// created at all (read-only install location, exotic sandboxing) — this
+// keeps a node able to start somewhere rather than not at all, at the
+// cost of the file landing somewhere less discoverable in that one case.
 func DefaultPath() string {
+	if dir, err := appdir.Dir(); err == nil {
+		return filepath.Join(dir, "identity.key")
+	}
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()

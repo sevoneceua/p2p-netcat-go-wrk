@@ -5,10 +5,38 @@ p2p-netcat-go-wrk — README
 Репозиторий: https://github.com/sevoneceua/p2p-netcat-go-wrk
 Лицензия: MIT (сохранена от апстрима, см. LICENSE)
 
-Этот файл описывает ТЕКУЩЕЕ состояние проекта по состоянию на коммит d93d1f7
+Этот файл описывает ТЕКУЩЕЕ состояние проекта по состоянию на коммит 5fb3713
 (Эпик 1, мультитуннель — базовая версия готова и проходит CI на Linux/
-Windows/macOS). Структура: 1) что уже работает, 2) команды управления,
-3) формат конфига мультитуннеля, 4) чего ещё нет, 5) сборка и CI.
+Windows/macOS). Структура: 0) где хранятся файлы, 1) что уже работает,
+2) команды управления, 3) формат конфига мультитуннеля, 4) чего ещё нет,
+5) сборка и CI.
+
+================================================================================
+0. ГДЕ ХРАНЯТСЯ ФАЙЛЫ ПРОГРАММЫ (папка "oobe")
+================================================================================
+Все рабочие файлы — identity-ключ, pairing-токены, конфиги туннелей и всё,
+что появится позже — лежат в одной предсказуемой папке РЯДОМ С САМИМ
+БИНАРНИКОМ, а не раскиданы по системным ~/.config / %AppData% и т.п.
+Папка называется "oobe" (Overlay Outbound Bridging Endpoints).
+
+  <папка с p2p-nc.exe>/oobe/identity.key
+  <папка с p2p-nc.exe>/oobe/tunnels.yaml
+  <папка с p2p-nc.exe>/oobe/tokens/...
+
+Правила резолва путей (internal/appdir.ResolvePath, используется везде,
+где конфиг принимает путь — identity, token_file):
+  - абсолютный путь — используется как есть
+  - "~/..." — раскрывается в домашнюю директорию пользователя (в YAML нет
+    шелла, который сделал бы это сам)
+  - любой другой (относительный) путь — резолвится ОТНОСИТЕЛЬНО ПАПКИ
+    oobe, а не текущей рабочей директории процесса (важно для службы —
+    Эпик 2, там CWD непредсказуем)
+
+Если ничего не указано явно (`identity:` пусто, флаг `-I` не передан) —
+используется `<oobe>/identity.key`, создаётся автоматически при первом
+запуске. Переопределить саму папку oobe целиком (например, для тестов
+или изолированной установки) можно переменной окружения
+P2P_NETCAT_APPDIR.
 
 ================================================================================
 1. ЧТО УЖЕ РАБОТАЕТ
@@ -79,7 +107,7 @@ Windows/macOS). Структура: 1) что уже работает, 2) ком
       Node закрываются штатно
 
   Пример:
-    $ p2p-nc run --config ~/.config/p2p-netcat/tunnels.yaml
+    $ p2p-nc run --config ./oobe/tunnels.yaml
     [p2p-ncd] PeerId: 12D3KooW...
     [p2p-ncd] address: /ip4/.../tcp/4001/p2p/12D3KooW...
     [p2p-ncd] 3 tunnel(s) running; Ctrl+C to stop
@@ -124,7 +152,7 @@ Windows/macOS). Структура: 1) что уже работает, 2) ком
 удалённая admin-shell, выход в сеть через upstream SOCKS):
 
 --------------------------------------------------------------------------
-identity: ~/.config/p2p-netcat/identity.key
+# identity: не указан -> по умолчанию <oobe>/identity.key (см. раздел 0)
 
 relays:
   - addr: /ip4/203.0.113.10/tcp/4001/p2p/12D3KooWRelayOne
@@ -148,7 +176,7 @@ tunnels:
     protocol: tcp
     logical_port: 15432            # p2p-адрес туннеля, НЕ сетевой порт
     target: 127.0.0.1:5432         # куда форвардить на этой машине
-    token_file: ~/.config/p2p-netcat/tokens/postgres.token
+    token_file: tokens/postgres.token   # относительный путь -> <oobe>/tokens/postgres.token
 
   # --- client: тот же туннель с другой машины ---
   - name: postgres-client
@@ -158,21 +186,21 @@ tunnels:
     logical_port: 15432
     peer: 12D3KooWExamplePeerID    # PeerId машины с postgres-server
     listen: 127.0.0.1:15432        # локальный bind:port для приложений
-    token_file: ~/.config/p2p-netcat/tokens/postgres.token
+    token_file: tokens/postgres.token
 
   # --- server-only: SOCKS5 exit-node ---
   - name: exit-proxy
     type: socks
     mode: server
     logical_port: 10800
-    token_file: ~/.config/p2p-netcat/tokens/socks.token
+    token_file: tokens/socks.token
 
   # --- server-only: удалённая интерактивная shell ---
   - name: admin-shell
     type: pty
     mode: server
     logical_port: 2222
-    token_file: ~/.config/p2p-netcat/tokens/shell.token
+    token_file: tokens/shell.token
 --------------------------------------------------------------------------
 
 Поля Tunnel:

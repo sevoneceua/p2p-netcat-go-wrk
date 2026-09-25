@@ -6,8 +6,18 @@ import (
 	"testing"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/santaklouse/go-p2p-netcat/internal/appdir"
 	"github.com/santaklouse/go-p2p-netcat/internal/secretfile"
 )
+
+func TestDefaultPathUsesAppDir(t *testing.T) {
+	oobe := filepath.Join(t.TempDir(), "oobe")
+	t.Setenv(appdir.OverrideEnvironment, oobe)
+	want := filepath.Join(oobe, "identity.key")
+	if got := DefaultPath(); got != want {
+		t.Fatalf("DefaultPath() = %q, want %q", got, want)
+	}
+}
 
 func TestLoadOrCreatePersistsIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "identity.key")

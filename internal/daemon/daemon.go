@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/santaklouse/go-p2p-netcat/internal/appdir"
 	"github.com/santaklouse/go-p2p-netcat/internal/identity"
 	"github.com/santaklouse/go-p2p-netcat/internal/listenerlock"
 	"github.com/santaklouse/go-p2p-netcat/internal/tunnelconfig"
@@ -79,7 +80,7 @@ func Run(parent context.Context, cfg *tunnelconfig.Config, log Logger) (*Daemon,
 		return nil, err
 	}
 
-	identityPath, err := expandHome(cfg.Identity)
+	identityPath, err := appdir.ResolvePath(cfg.Identity)
 	if err != nil {
 		return nil, fmt.Errorf("identity path: %w", err)
 	}
