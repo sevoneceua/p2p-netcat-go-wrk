@@ -108,7 +108,7 @@ func NewRoot() *cobra.Command {
 		"close an idle UDP source association after this many seconds; 0 disables",
 	)
 	addNodeFlags(root, opts)
-	root.AddCommand(newIDCommand(), newTokenCommand(), newRelayCommand(), newRunCommand())
+	root.AddCommand(newIDCommand(), newTokenCommand(), newRelayCommand(), newRunCommand(), newServiceCommand())
 	root.InitDefaultVersionFlag()
 	if versionFlag := root.Flags().Lookup("version"); versionFlag != nil {
 		versionFlag.Shorthand = "V"
