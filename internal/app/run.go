@@ -29,14 +29,25 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 0
 		}
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Zero arguments: this is what happens when the executable is
+	// double-clicked in Explorer (or simply run bare for a quick local
+	// test). If a config file sits next to the executable, run it as the
+	// multi-tunnel daemon directly instead of falling into cobra's normal
+	// single-shot-netcat dispatch (which requires at least -l or a
+	// target). See tryAutoConfig for the exact file-name lookup order.
+	if code, handled := tryAutoConfig(ctx, args, stdout, stderr); handled {
+		return code
+	}
+
 	if code, handled, err := runUnderTor(args, stdin, stdout, stderr); handled {
 		if err != nil && !cli.QuietRequested(args) {
 			fmt.Fprintf(stderr, "[p2p-nc] error: %v\n", err)
 		}
 		return code
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	command := cli.NewRoot()
 	command.SetArgs(args)
 	command.SetIn(stdin)

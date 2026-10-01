@@ -66,6 +66,24 @@ type options struct {
 	verbose                          bool
 }
 
+func init() {
+	// Reached only when double-clicked from Explorer with zero arguments
+	// AND internal/app.tryAutoConfig found no adjacent config file to run
+	// as a daemon (that path bypasses cobra entirely, so this never fires
+	// when it succeeds). Custom text over cobra's stock message so the
+	// 5-second splash actually tells a tester what file name to drop next
+	// to the executable, instead of just "open cmd.exe".
+	cobra.MousetrapHelpText = `This is a command line tool.
+
+To run a multi-tunnel daemon by double-clicking, place a config file
+named p2p-nc.yaml (or .cfg/.ini/.mui) next to this executable and
+double-click it again.
+
+Otherwise, open cmd.exe or PowerShell and run it from there, e.g.:
+  p2p-nc.exe run --config tunnels.yaml
+`
+}
+
 func NewRoot() *cobra.Command {
 	opts := &options{}
 	root := &cobra.Command{
